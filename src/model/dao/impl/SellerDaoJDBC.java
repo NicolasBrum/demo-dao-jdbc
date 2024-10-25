@@ -6,10 +6,7 @@ import model.dao.SellerDao;
 import model.entities.Department;
 import model.entities.Seller;
 
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
-import java.sql.SQLException;
+import java.sql.*;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -24,6 +21,29 @@ public class SellerDaoJDBC implements SellerDao {
 
     @Override
     public void insert(Seller obj) {
+        PreparedStatement st = null;
+
+        try{
+            st = conn.prepareStatement("INSERT INTO seller VALUES (DEFAULT,?,?,?,?,?)", Statement.RETURN_GENERATED_KEYS);
+            st.setString(1, obj.getName());
+            st.setString(2,obj.getEmail());
+            st.setDate(3,new java.sql.Date(obj.getBirthDate().getTime()));
+            st.setDouble(4,obj.getBaseSalary());
+            st.setInt(5,obj.getDepartment().getId());
+
+            int rowsAffected = st.executeUpdate();
+
+            if(rowsAffected > 0){
+                ResultSet rs = st.getGeneratedKeys();
+                if(rs.next()){
+                    int id = rs.getInt(1);
+                    obj.setId(id);
+                }
+            }
+
+        }catch (SQLException e){
+            throw new DbException(e.getMessage());
+        }
 
     }
 
@@ -69,7 +89,40 @@ public class SellerDaoJDBC implements SellerDao {
 
     @Override
     public List<Seller> findAll() {
-        return List.of();
+        PreparedStatement st = null;
+        ResultSet rs = null;
+
+        try{
+            st = conn.prepareStatement("SELECT seller.*, department.Name AS DepName, department.Id AS DepartmentId FROM department "
+                    + "JOIN seller "
+                    + "ON department.id = seller.DepartmentId "
+                    + "ORDER BY seller.Name");
+
+            rs = st.executeQuery();
+
+            List<Seller> sellers = new ArrayList<>();
+            Map<Integer,Department> map = new HashMap<>();
+
+            while(rs.next()){
+                Department dep = map.get(rs.getInt("DepartmentId"));
+
+                if(dep == null){
+                    dep = this.instantiateDepartment(rs);
+                    map.put(rs.getInt("DepartmentId"), dep);
+                }
+
+                Seller sel = this.instantiateSeller(rs, dep);
+                sellers.add(sel);
+            }
+
+            return sellers;
+
+        }catch (SQLException e){
+            throw new DbException(e.getMessage());
+        }finally {
+            DB.closeStatement(st);
+            DB.closeResultSet(rs);
+        }
     }
 
     @Override
@@ -107,7 +160,6 @@ public class SellerDaoJDBC implements SellerDao {
         finally {
             DB.closeStatement(st);
             DB.closeResultSet(rs);
-            DB.closeConnection();
         }
     }
 
